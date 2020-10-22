@@ -33,6 +33,12 @@
     - voeg `entry("getnumsyscalls")` toe aan [user/usys.pl][usys.pl] (leg uit dat dit script gewoon een assembly bestand genereerd)
     - gebruik die nieuwe system call in een user space programma
 
+# Permanente evaluatie
+
+- Voeg een nieuwe system call `void traceme(int fd)` toe die ervoor zorgt dat elke system call van het proces geprint wordt naar `fd` samen met de pid van het proces. (`{pid}: syscall {num}`)
+  (TODO kunnen we vanuit kernel space gemakkelijk naar een fd schrijven?)
+- Maak een user space programma `traceme` dat een executable als argument krijgt en deze executable oproept met de `traceme` functionaliteit aangezet. (`fork`, `traceme`, `exec`)
+
 
 [struct proc]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/proc.h#L86
 [syscall]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/syscall.c#L133
