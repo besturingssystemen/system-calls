@@ -12,7 +12,7 @@
         - voeg `$U/crt0.o` toe aan [`ULIB`][ULIB]
         - implementeer `void _start(int argc, char* argv[])` in user/crt0.c
         - pas het entry point (`-e` flag) aan dat aan [`ld` wordt gegeven][ld rule]
-        - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/eb21960e6323efedde447ba39df5c6b7d831e409)
+        - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/0f280ef88f8c2df1b7b0ee45cef6d0a5781c3f32)
 
 # System calls
 
@@ -30,7 +30,7 @@
             ```
         - voeg `$U/_hello_asm_puts\` aan [`UPROGS`][UPROGS]
         - implementeer `main` (denk aan bewaren `ra`!)
-        - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/489fa639b46ab2168e4c7abe9d7d82d650c4b67b)
+        - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/f5671422e83c36303acd41abd29faa49eb2eb5c3)
 - xv6 system call convention
     - oefening: hello world in assembly via `write`
         - ongeveer zelfde begin als vorige oefening maar gebruik user/hello_asm_write.S
@@ -45,7 +45,7 @@
             hello_str:
                 .ascii "Hello, world!\n"
             ```
-        - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/db8241a6803334b7d225017b400d848ba31204e0)
+        - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/b3b23725a8ecd62b54e67dfaf1acab4fbc5ead5f)
 - xv6 system call dispatch code
     - [`syscall`][syscall]
       Vanaf hier zou de syscall code begrijpbaar moeten zijn.
