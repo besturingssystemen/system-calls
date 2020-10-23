@@ -73,7 +73,8 @@
   Gebruik [`argint`][argint] om een sycall argument op te vragen.
     - **NOTE** in een eerdere versie van de opgave was er een `fd` argument. Het blijkt echter moeilijk om in de kernel geformatteerde strings naar een file te schrijven (geen `sprintf` en `filewrite` verwacht een user space adres)
     - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/a6ec06062f1fd1925687347143ec431359c1a7f8)
-- Maak een user space programma `traceme` dat een executable als argument krijgt en deze executable oproept met de `traceme` functionaliteit aangezet. (`fork`, `traceme`, `exec`)
+- Maak een user space programma `trace` dat een executable als argument krijgt en deze executable oproept met de `traceme` functionaliteit aangezet. (`traceme`, `exec`)
+    - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/2fa37b2beb1b60d0aeb7cd584828076146041b4f)
 
 
 [struct proc]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/proc.h#L86
