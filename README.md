@@ -69,8 +69,10 @@
 
 # Permanente evaluatie
 
-- Voeg een nieuwe system call `void traceme(int fd)` toe die ervoor zorgt dat elke system call van het proces geprint wordt naar `fd` samen met de pid van het proces. (`{pid}: syscall {num}`)
-  (TODO kunnen we vanuit kernel space gemakkelijk naar een fd schrijven?)
+- Voeg een nieuwe system call `void traceme(int enable)` toe die ervoor zorgt dat (als `enable` truthy is) elke system call van het proces geprint wordt naar de console (gebruik de kernel [`printf`][kernel printf]) samen met de pid van het proces. (`[{pid}]: syscall {num}`)
+  Gebruik [`argint`][argint] om een sycall argument op te vragen.
+    - **NOTE** in een eerdere versie van de opgave was er een `fd` argument. Het blijkt echter moeilijk om in de kernel geformatteerde strings naar een file te schrijven (geen `sprintf` en `filewrite` verwacht een user space adres)
+    - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/a6ec06062f1fd1925687347143ec431359c1a7f8)
 - Maak een user space programma `traceme` dat een executable als argument krijgt en deze executable oproept met de `traceme` functionaliteit aangezet. (`fork`, `traceme`, `exec`)
 
 
@@ -85,3 +87,5 @@
 [ULIB]: https://github.com/besturingssystemen/xv6-riscv/blob/2baca184bce1e0d11f55460a6b8ec0c260f08a10/Makefile#L92
 [ld rule]: https://github.com/besturingssystemen/xv6-riscv/blob/2baca184bce1e0d11f55460a6b8ec0c260f08a10/Makefile#L95
 [UPROGS]: https://github.com/besturingssystemen/xv6-riscv/blob/4edbcfd22ccadded04c36aeef8872c5ab4a92f28/Makefile#L120
+[kernel printf]: https://github.com/besturingssystemen/xv6-riscv/blob/3c44dade20d87b259a3713c6d84ecccfd3056bef/kernel/printf.c#L64
+[argint]: https://github.com/besturingssystemen/xv6-riscv/blob/3c44dade20d87b259a3713c6d84ecccfd3056bef/kernel/syscall.c#L58
