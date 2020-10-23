@@ -53,7 +53,7 @@
       We moeten enkel uitleggen wat trapframe precies is.
     - [`getpid`][sys_getpid] als voorbeeld (eenvoudigste syscall)
 - system call toevoegen: `getnumsyscalls`
-    - voeg `numsyscalls` toe aan [`struct proc`][struct proc]
+    - voeg `uint64 numsyscalls` toe aan [`struct proc`][struct proc] (private section -> explain)
     - initialiseer `numsyscalls` in [`allocproc`][allocproc]
     - verhoog `numsyscalls` in [`syscall`][syscall]
     - voeg `SYS_getnumsyscalls` toe aan [kernel/syscall.h][syscall.h]
@@ -63,6 +63,9 @@
     - voeg `int getnumsyscalls()` toe aan [user/user.h][user.h]
     - voeg `entry("getnumsyscalls")` toe aan [user/usys.pl][usys.pl] (leg uit dat dit script gewoon een assembly bestand genereerd)
     - gebruik die nieuwe system call in een user space programma
+- **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/fc2ac55f12d039b83a6068f9e3b9f08fd442b44c)
+- call `getnumsyscalls` in `_start` na main
+    - verklaar waarom `hello_asm_write` 4 syscalls doet voor exit (`sbrk` door `malloc` in `sh` (waarschijnlijk niet altijd), `exec` in `sh`, `write` in `hello`, `getnumsyscalls` zelf in `hello`)
 
 # Permanente evaluatie
 
