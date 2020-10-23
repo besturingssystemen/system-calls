@@ -8,6 +8,11 @@
 - `exec()` roept ELF entry point op met `argc` en `argv` als argumenten
     - oefening: vind entry point met `readelf`
     - oefening: implementeer `crt0.c` die `main` oproept en dan `exit`
+        - voeg user/crt0.c toe
+        - voeg `$U/crt0.o` toe aan [`ULIB`][ULIB]
+        - implementeer `void _start(int argc, char* argv[])` in user/crt0.c
+        - pas het entry point (`-e` flag) aan dat aan [`ld` wordt gegeven][ld rule]
+        - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/eb21960e6323efedde447ba39df5c6b7d831e409)
 
 # System calls
 
@@ -48,3 +53,5 @@
 [sysproc.c]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/sysproc.c
 [user.h]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/user/user.h
 [usys.pl]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/user/usys.pl
+[ULIB]: https://github.com/besturingssystemen/xv6-riscv/blob/2baca184bce1e0d11f55460a6b8ec0c260f08a10/Makefile#L92
+[ld rule]: https://github.com/besturingssystemen/xv6-riscv/blob/2baca184bce1e0d11f55460a6b8ec0c260f08a10/Makefile#L95
