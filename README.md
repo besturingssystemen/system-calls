@@ -291,6 +291,16 @@ void _start(int argc, char* argv[])
 - Maak een user space programma `trace` dat een executable als argument krijgt en deze executable oproept met de `traceme` functionaliteit aangezet. (`traceme`, `exec`)
     - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/2fa37b2beb1b60d0aeb7cd584828076146041b4f)
 
+# Bonus oefening
+
+- Pass `traceme` aan om nu een `fd` als input te krijgen
+- Wanneer `traceme` opgeroepen wordt, valideer je eerst de `fd` (geldige open file, is een pipe, is writable)
+  Zo ja, sla op in `struct proc::tracefd`. Zo nee, zet dit veld op -1
+- Wanneer er een syscall gebeurt en `tracefd` is niet gelijk aan -1, schrijf een `struct tracemsg` naar `tracefd` via [`pipewrite`][pipewrite] (zet `user_src` op 0 om aan te geven dat de input in kernel space zit)
+- Schrijf een user space programma `trace` dat gebruik maakt van deze nieuwe syscall
+- **TODO** meer details en boiler plate code
+- **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/065b7023dafccfc81cdc6f927aaae1fb8be2513d)
+
 
 [struct proc]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/proc.h#L86
 [syscall]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/syscall.c#L133
@@ -306,3 +316,4 @@ void _start(int argc, char* argv[])
 [kernel printf]: https://github.com/besturingssystemen/xv6-riscv/blob/3c44dade20d87b259a3713c6d84ecccfd3056bef/kernel/printf.c#L64
 [argint]: https://github.com/besturingssystemen/xv6-riscv/blob/3c44dade20d87b259a3713c6d84ecccfd3056bef/kernel/syscall.c#L58
 [fork]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/proc.c#L266
+[pipewrite]: https://github.com/besturingssystemen/xv6-riscv/blob/96678feb04780f6168f6184b8223f3c8313bad83/kernel/pipe.c#L77
