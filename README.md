@@ -16,8 +16,9 @@ In deze oefenzitting leren jullie over de werking van system calls.
 - [System calls](#system-calls)
   - [System calls vs function calls](#system-calls-vs-function-calls)
     - [RISC-V assembly](#risc-v-assembly)
-  - [Scratchpad](#scratchpad)
+  - [SCRATCHPAD](#scratchpad)
 - [Permanente evaluatie](#permanente-evaluatie)
+- [Bonus oefening](#bonus-oefening)
 
 # Voorbereiding
 
@@ -279,21 +280,26 @@ int main(){
 }
 ```
 
-Vertaald naar RISC-V assembly zou dit er als volgt kunnen uitzien.
+Vertaald naar RISC-V assembly zou dit er als volgt kunnen uitzien:
 
 * Lees de onderstaande assembly-code en zorg ervoor dat je elke regel begrijpt.
+  
 > :information_source:  Denk terug aan functie-oproepen in DRAMA in het vak SOCS. Conceptueel gezien zijn deze identiek hetzelfde. SOCS gebruikt echter nederlandstalige termen voor vele concepten, dit kan tot verwarring leiden. Hier een snelle cheat sheet:
 > | DRAMA | RISC V | Verklaring |
 > | --- | --- | --- |
 > | HIA.w reg, val | li reg, val | Laad waarde `val` in register `reg`
-> | HIA reg, addr  | ld reg, addr | Laad waarde op adres `addr` in register `ref`
-> | OPT.w reg, val | addi reg, val | Tel waarde `val` op bij register `reg`
+> | HIA reg, addr  | ld reg, addr | Laad waarde op adres `addr` in register `reg`
+> | HIA.a reg, symbol | la reg, symbol | Laad het adres van `symbol` in register `reg`
+> | BIG reg, addr  | sd reg, addr | Bewaar waarde in `reg` op in adres `addr`
+> | OPT.w reg, val | addi reg, val | Tel waarde `val` op bij het register `reg`
+> | OPT dst, src   | add dst, dst, src | dst = dst + src (`dst` en `src` zijn registers)
 > | SPR label | j label | Spring naar symbool `label`
-> | BST value | addi sp, sp, -8 | Bewaar `value` op de stack
+> | BST value | addi sp, sp, -8 | Bewaar `value` op de stack (stapel)
 > |           | sd value, 0(sp) |
 > | HST reg   | ld value, 0(sp) | Haal waarde van de stack en bewaar in `reg`
 > |           | addi sp, sp, 8  |
-> 
+> | SBR symbol| jal symbol      | Schrijf de waarde van de programmateller naar het return adres register (TKA in DRAMA, ra in Risc V) en spring naar `symbol`
+> | KTG       | ret             | Spring naar het adres in het return address register
 
 ```asm
 .data                   #Start de data-sectie
@@ -344,25 +350,28 @@ main:                   #Definieer het symbool main
                         #ra (een adres in crt0?)
 ```
 
+In RISC-V worden functie-parameters in de eerste plaats doorgegeven via de registers `a0` - `a7`. Wanneer er niet genoeg registers zijn voor het aantal parameters, worden extra parameters via de stack meegegeven. Een volledige beschrijving van de compiler-conventies voor een RISC-V functie-oproep kan je vinden in de [RISC-V calling conventions](https://riscv.org/wp-content/uploads/2015/01/riscv-calling.pdf).
 
+* Voeg nu een bestand `user/hello_asm_puts.S` toe. Je kan vertrekken van de volgende assembly-code:
 
-## Scratchpad
+ ```asm
+.text
+.globl main
+main:
+    #TODO functie-oproep voorbereiden
+    jal puts
+    #TODO return adres herstellen
+    ret
 
-- RISC-V calling convention
-    - oefening: hello world in assembly (zonder syscalls: call puts, ret from main werkt met crt0)
-        - voeg user/hello_asm_puts.S toe met contents (TODO: meer/minder hulp? welke uitleg bij deze contents?):
-            ```asm
-            .text
-            .global main
-            main:
+.section .rodata
+hello_str: .string "Hello, world!"
+```
+* voeg `$U/_hello_asm_puts\` aan [`UPROGS`][UPROGS]
+* implementeer `main` (denk aan bewaren `ra`!)
+* **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/f5671422e83c36303acd41abd29faa49eb2eb5c3)
 
-            .section .rodata
-            hello_str:
-                .asciz "Hello, world!"
-            ```
-        - voeg `$U/_hello_asm_puts\` aan [`UPROGS`][UPROGS]
-        - implementeer `main` (denk aan bewaren `ra`!)
-        - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/f5671422e83c36303acd41abd29faa49eb2eb5c3)
+## SCRATCHPAD
+
 - xv6 system call convention
     - oefening: hello world in assembly via `write`
         - ongeveer zelfde begin als vorige oefening maar gebruik user/hello_asm_write.S
