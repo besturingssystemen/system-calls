@@ -14,6 +14,9 @@ In deze oefenzitting leren jullie over de werking van system calls.
     - [De `exec` system call](#de-exec-system-call)
     - [C runtime (crt0)](#c-runtime-crt0)
 - [System calls](#system-calls)
+  - [System calls vs function calls](#system-calls-vs-function-calls)
+    - [RISC-V assembly](#risc-v-assembly)
+  - [Scratchpad](#scratchpad)
 - [Permanente evaluatie](#permanente-evaluatie)
 
 # Voorbereiding
@@ -230,6 +233,120 @@ void _start(int argc, char* argv[])
 * Test nu je implementatie van `crt0` door `_helloworld` te bewerken. Vervang je oproep naar `exit` door een `return` uit `main`. Indien `crt0` correct is geïmplementeerd, krijg je geen user exception na uitvoering van het programma.
 
 # System calls
+
+Ondertussen weten we hoe een proces opgestart kan worden, door middel van de system calls `fork` en `exec`. 
+We weten dat we de system call `write` kunnen gebruiken om te schrijven naar de console, een buffer (bvb een pipe) of een bestand.
+
+System calls geven processen de mogelijkheid diensten te vragen aan het besturingssysteem. 
+Bij het uitvoeren van een system call geeft een proces tijdelijk de controle over de processor door aan het OS.
+
+## System calls vs function calls
+
+Een system call lijkt op het eerste zicht erg op een function call.
+In de vorige sessie hebben de userspace functie `puts(char* str)` geschreven die een string schrijft naar de `stdout`.
+
+Een proces dat een string wil schrijven naar de `stdout` kan de *function call* `puts` gebruiken, als volgt:
+```c
+char* str = "Hello, world!\n";
+puts(str);
+```
+
+Een proces dat een string wil schrijven naar de `stdout` kan ook de *system call* `write` gebruiken, als volgt:
+```c
+char* str = "Hello, world!\n";
+write(1, str, sizeof(str));
+```
+
+In C kan je het verschil niet zien tussen een system call en een function call. 
+Indien we dit echter op assembly niveau bekijken is er wel een duidelijk verschil.
+Tijd dus om in assembly te duiken.
+
+> :exclamation: `puts` en andere functies zoals `printf` maken intern ook gebruik van de system call `write`. Het is niet mogelijk te schrijven zonder een system call. Dat verandert niets aan het feit dat oproepen naar `puts` en `printf` gewone function calls zijn.
+
+### RISC-V assembly
+
+Neem onderstaand simpel C-programma:
+
+```c
+int value = 5;
+
+int doubleIt(int i){
+    return i*2;
+}
+
+int main(){
+    doubleIt(i);
+}
+```
+
+Vertaald naar RISC-V assembly zou dit er als volgt kunnen uitzien.
+
+* Lees de onderstaande assembly-code en zorg ervoor dat je elke regel begrijpt.
+> :information_source:  Denk terug aan functie-oproepen in DRAMA in het vak SOCS. Conceptueel gezien zijn deze identiek hetzelfde. SOCS gebruikt echter nederlandstalige termen voor vele concepten, dit kan tot verwarring leiden. Hier een snelle cheat sheet:
+> | DRAMA | RISC V | Verklaring |
+> | --- | --- | --- |
+> | HIA.w reg, val | li reg, val | Laad waarde `val` in register `reg`
+> | HIA reg, addr  | ld reg, addr | Laad waarde op adres `addr` in register `ref`
+> | OPT.w reg, val | addi reg, val | Tel waarde `val` op bij register `reg`
+> | SPR label | j label | Spring naar symbool `label`
+> | BST value | addi sp, sp, -8 | Bewaar `value` op de stack
+> |           | sd value, 0(sp) |
+> | HST reg   | ld value, 0(sp) | Haal waarde van de stack en bewaar in `reg`
+> |           | addi sp, sp, 8  |
+> 
+
+```asm
+.data                   #Start de data-sectie
+    value: .word 0x5    #Init global value met waarde 5
+
+.text                   #Start de code-sectie
+
+.globl main             #Exporteer het symbool main
+                        #Dit zorgt ervoor dat oa. crt0
+                        #een functie-oproep naar main
+                        #kunnen uitvoeren.
+
+
+doubleIt:               #Definieer het symbool doubleIt
+                        #Calling convention:
+                        #   a0: input argument 1
+                        #   a0: return value
+    add a0, a0, a0      #Verdubbel i, geef terug via a0
+    ret                 #Spring naar het adres in register ra
+                        #ra is het return-address register
+
+main:                   #Definieer het symbool main
+
+    addi sp, sp, -8     #Reserveer 8 bytes (64 bit) 
+                        #op de call stack door de stack
+                        #pointer te verlagen met 8
+                        #(Stack groeit van hoog naar laag)
+
+    sd ra, (sp)         #Bewaar de huidige waarde van
+                        #het return-adres register ra
+                        #op de call stack
+
+    la t0, value        #Laad in t0 het adres van 
+                        #de global value
+
+    ld a0, (t0)         #Laad de waarde op het adres in t0
+                        #in a0
+
+    jal doubleIt        #Spring naar symbool doubleIt en
+                        #sla in het return-address register
+                        #ra het adres op waarnaar ret moet
+                        #springen.
+
+    ld ra, (sp)         #Haal het oude return-adres terug
+                        #van de stack en bewaar het in ra
+
+    ret                 #Spring naar het adres in register
+                        #ra (een adres in crt0?)
+```
+
+
+
+## Scratchpad
 
 - RISC-V calling convention
     - oefening: hello world in assembly (zonder syscalls: call puts, ret from main werkt met crt0)
