@@ -23,7 +23,7 @@ In deze oefenzitting leren jullie over de werking van system calls aan de hand v
 
 # Voorbereiding
 
-Ter voorbereiding van deze oefenzitting wordt je verwacht:
+Ter voorbereiding van deze oefenzitting word je verwacht:
 
 * De oefenzitting [os interfaces](https://github.com/besturingssystemen/os-interfaces) te hebben voltooid.
 * Hoofdstuk 2 van het [xv6 boek](https://github.com/mit-pdos/xv6-riscv-book/) te hebben gelezen.
@@ -48,6 +48,10 @@ De proces-abstractie is enorm krachtig.
 Ze laat ons toe om complexe systemen op te bouwen als een verzameling programma's die elk een eigen specifieke rollen vervullen.
 Deze programma's kunnen dankzij de procesabstractie in parallel worden uitgevoerd, geïsoleerd van elkaar met elk een eigen geheugenruimte.
 
+Om te vermijden dat processen in user space de correct werking van het besturingssysteem in gedrang kunnen brengen, zal de kernel (de core van het besturingssysteem) zichzelf ook isoleren van deze processen.
+Dit wilt niet alleen zeggen dat processen het geheugen van de kernel niet kunnen lezen of schrijven maar ook dat ze de code van de kernel niet uit kunnen voeren.
+System calls zijn de interface van de kernel naar processen en laten het toe om de code in de kernel op een gecontroleerde manier uit te voeren.
+
 ## Aanmaak processen
 
 ### De `fork` system call
@@ -64,7 +68,7 @@ In detail begrijpen hoe een proces gekopieerd wordt, is op dit punt in de oefenz
   
 Het nut van de velden `parent`, `pid`, `sz`, `ofile`, `cwd` en `name` zou duidelijk moeten zijn. Vraag verduidelijking aan een assistent indien dit niet het geval is. 
 
-> :bulb: Een file descriptor (int fd) indexeert de `ofile` array. Wanneer we dus met de `write` system call schrijven naar een bestand geven we als eerste argument aan `write` een index mee in de tabel met open bestanden van het proces.
+> :bulb: Een file descriptor (`int fd`) indexeert de `ofile` array. Wanneer we dus met de `write` system call schrijven naar een bestand geven we als eerste argument aan `write` een index mee in de tabel met open bestanden van het proces.
 
 Om het veld `pagetable` te begrijpen hebben we kennis nodig van virtual memory, een concept dat we in de volgende oefenzitting zullen bekijken.
 
@@ -76,19 +80,21 @@ De velden `lock`, `chan` en `xstate` hebben te maken met synchronizatie en worde
 
 ### Trapframe
 
-Begrip van het veld `trapframe` is belangrijk voor deze oefenzitting. Wanneer een proces de controle doorgeeft aan het besturingssystem, onder andere bij het uitvoeren van een *system call*, gebeurt dit via een *trap*.
+Begrip van het veld `trapframe` is belangrijk voor deze oefenzitting. Wanneer een proces de controle doorgeeft aan het besturingssysteem bij het uitvoeren van een *system call* of wanneer een proces onderbroken wordt door bijvoorbeeld een interrupt, gebeurt dit via een *trap*.
 
 Een *trap* in user-mode zorgt ervoor dat de processor schakelt naar supervisor-mode en vervolgens de *trap handler* begint uit te voeren. Deze handler is een stuk machinecode op een vaste locatie in het geheugen.
 
 Het uitvoerende proces, dat de trap heeft veroorzaakt, wil na afloop van de trap verder kunnen uitvoeren. Het kan echter zijn dat machinecode in het besturingssysteem bepaalde registers nodig heeft die reeds in gebruik zijn door het uitvoerende proces. Om ervoor te zorgen dat deze registerwaarden niet verloren gaan, bewaart de trap handler deze in de *trap frame*. Bij terugkeer uit de trap kunnen de registerwaarden hersteld worden.
 
-* De `struct trapframe` staat gedefinieerd net boven de `struct proc` in de broncode van xv6. Bekijk de velden van deze struct.
+* Bekijk de velden van [`struct trapframe`][trapframe] in kernel/proc.h.
 
 Het veld `kernel_satp` is gerelateerd aan het veld `pagetable` in `struct proc` en zal pas in detail bekeken worden in de oefenzitting over Virtual Memory.
 
 In xv6 heeft de kernel een eigen call stack, gesplitst van de call stack van het proces. Het veld `kstack` in `struct proc` bevat het adres van deze stack, het veld `kernel_sp` bevat een pointer naar de top van deze stack.
+Merk op dat xv6 dus een kernel stack heeft _per proces_.
+Waarom dit nodig is, zal duidelijk worden in latere oefenzittingen.
 
-Het veld `kernel_hartid` bewaart de identifier van de hardware thread waarop het proces actief is. Dit wordt later besproken in de sessie over synchronizatie.
+Het veld `kernel_hartid` bewaart de identifier van de hardware thread (CPU core) waarop het proces actief is. Dit wordt later besproken in de sessie over synchronizatie.
 
 Op dit moment zou je een idee moeten hebben van de state die per proces bewaard wordt, en de state die bewaard en hersteld moet worden bij het uitvoeren van een trap.
 
@@ -116,12 +122,12 @@ in het programma laadt.
 
 In vorige oefenzitting hebben we gemerkt dat wanneer we returnen uit main, we een exception krijgen. We kunnen nu begrijpen waarom dit gebeurt.
 
-Een proces wordt gestart met behulp van `exec` door een programma in te laden en vervolgens te springen naar het entry point van dat proces. `xv6` gebruikt als entry point `main`. Dat wil zeggen dat `main` niet als functie wordt opgeroepen en je dus ook geen `return` kan uitvoeren uit main.
+Een proces wordt gestart met behulp van `exec` door een programma in te laden en vervolgens te springen naar het entry point van dat proces. `xv6` gebruikt als entry point `main`. Dat wil zeggen dat `main` niet als functie wordt opgeroepen en je dus ook geen `return` kan uitvoeren uit main (want het zal geen geldig return adres hebben).
 
 In vele Linux-distributies wordt gebruik gemaakt van [crt0](https://en.wikipedia.org/wiki/Crt0) om C-programma's te starten. 
-Het entry point van een C executable wordt geplaatst in `crt0`, met name bij het daarin gedefinieerde `_start` symbool.
+Het entry point van een C executable wordt geplaatst in `crt0`, vaak in een functie genaamd `_start`.
 
-`crt0` is dus het absolute beginpunt bij het uitvoering van een uit C gecompileerde executable. `crt0` initialiseert de C-runtime en roept vervolgens `main` op. Na uitvoering van `main` wordt de return-value van `main` doorgegeven aan de `exit` system call. Zo wordt het proces afgesloten.
+`_start` in `crt0` is dan het absolute beginpunt bij het uitvoering van een uit C gecompileerde executable. `_start` initialiseert de C-runtime en roept vervolgens `main` op. Na uitvoering van `main` wordt de return-value van `main` doorgegeven aan de `exit` system call. Zo wordt het proces afgesloten.
 
 Om het mogelijk te maken om te returnen uit `main` zonder exceptions, voegen we nu onze eigen `crt0` toe aan xv6.
 
@@ -418,3 +424,4 @@ Zoals aangekondigd op Toledo is de deadline van deze permanente evaluatie een we
 [argint]: https://github.com/besturingssystemen/xv6-riscv/blob/3c44dade20d87b259a3713c6d84ecccfd3056bef/kernel/syscall.c#L58
 [fork]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/proc.c#L266
 [pipewrite]: https://github.com/besturingssystemen/xv6-riscv/blob/96678feb04780f6168f6184b8223f3c8313bad83/kernel/pipe.c#L77
+[trapframe]: https://github.com/besturingssystemen/xv6-riscv/blob/bss/kernel/proc.h#L52
