@@ -172,11 +172,11 @@ puts(str);
 
 Een proces dat een string wil schrijven naar de `stdout` kan ook de *system call* `write` gebruiken, als volgt:
 ```c
-const char* str = "Hello, world!";
+const char* str = "Hello, world!\n";
 write(1, str, strlen(str));
 ```
 In dit geval biedt C echter een wrapper-functie aan, zodat het mogelijk is om een system call op te roepen als een functie.
-De echte syscall gebeurt dus in de implementatie van de write wrapperfunctie.
+De echte syscall gebeurt dus in de implementatie van de `write` wrapper-functie.
 Deze wrappers moeten echter op assembly-niveau geïmplementeerd worden.
 Het is dus tijd om terug in assembly te duiken.
 
@@ -189,12 +189,12 @@ Neem onderstaand simpel C-programma:
 ```c
 int value = 5;
 
-int doubleIt(int i){
-    return i*2;
+int sum(int i, int j){
+    return i + j;
 }
 
 int main(){
-    doubleIt(i);
+    sum(value, 10);
 }
 ```
 
@@ -228,14 +228,15 @@ Vertaald naar RISC-V assembly zou dit er als volgt kunnen uitzien:
 .globl main             #Exporteer het symbool main
                         #Dit zorgt ervoor dat oa. crt0
                         #een functie-oproep naar main
-                        #kunnen uitvoeren.
+                        #kan uitvoeren.
 
 
-doubleIt:               #Definieer het symbool doubleIt
+sum:                    #Definieer het symbool sum
                         #Calling convention:
-                        #   a0: input argument 1
+                        #   a0: input argument 1 (i)
+                        #   a1: input argument 2 (j)
                         #   a0: return value
-    add a0, a0, a0      #Verdubbel i, geef terug via a0
+    add a0, a0, a1      #Tel i en j op, geef terug via a0
     jr ra               #Spring naar het adres in register ra
                         #ra is het return-address register
 
@@ -256,13 +257,18 @@ main:                   #Definieer het symbool main
     ld a0, (t0)         #Laad de waarde op het adres in t0
                         #in a0
 
-    jal ra, doubleIt    #Spring naar symbool doubleIt en
+    li a1, 10           #Laad de waarde 10 in a1
+
+    jal ra, sum         #Spring naar symbool sum en
                         #sla in het return-address register
                         #ra het adres op waarnaar ret moet
                         #springen.
 
     ld ra, (sp)         #Haal het oude return-adres terug
                         #van de stack en bewaar het in ra
+
+    addi sp, sp, 8      #Geef de gereserveerde 8 bytes op
+                        #de stack terug vrij
 
     jr ra               #Spring naar het adres in register
                         #ra (een adres in crt0?)
@@ -294,11 +300,11 @@ Nu functie-oproepen in assembly weer vers in het geheugen zit, is het tijd om te
 
 Alle system calls in RISC-V worden uitgevoerd met behulp van de `ecall` instructie. Deze instructie, wanneer uitgevoerd vanuit user mode, zal ervoor zorgen dat de processor overgaat naar *supervisor mode* en vervolgens (via de trampoline, hierover meer in de sessie over Virtual Memory) springt naar de eerder besproken trap handler. Herinner je dat in die trap handler de registers van het user-space programma bewaard worden.
 
-De trap handler zal vervolgens de oorzaak van de trap bepalen. Indien de trap veroorzaakt was door een ecall weten we dat de gebruiker een system call probeerde op te roepen.
+De trap handler zal vervolgens de oorzaak van de trap bepalen. Indien de trap veroorzaakt was door een `ecall` weten we dat de gebruiker een system call probeerde op te roepen.
 Er wordt dus gesprongen naar de system call handler, met name de functie `syscall(void)`.
 
 * Bekijk de functie [`syscall`][syscall] in de code van xv6. Welk register wordt hier gebruikt om te bepalen welke system call opgeroepen moet worden?
-* Voeg nu een bestand `user/hello_asm_write.S` toe. Maak gebruik van de `ecall` instructie om de system call `write` uit te voeren. Je zal het register uit bovenstaande vraag moeten gebruiken om de correcte system call op te vragen. Je kan starten vanuit onderstaande code:
+* Voeg nu een bestand `user/hello_asm_write.S` toe (let op de hoofdletter `S` in de extensie). Maak gebruik van de `ecall` instructie om de system call `write` uit te voeren. Je zal het register uit bovenstaande vraag moeten gebruiken om de correcte system call op te vragen. Je kan starten vanuit onderstaande code:
 
 ```asm
 #include "kernel/syscall.h"
@@ -314,7 +320,7 @@ main:
 
 .section .rodata
 hello_str:
-    .string "Hello, world!"
+    .string "Hello, world!\n"
 ```
 
 > :bulb: Naast de selectie van de system call zal het ook nodig zijn om parameters door te geven aan `write`. Dit gebeurt volgens dezelfde conventies als bij een gewone functie-oproep met `jal`. De signature van `write` is `int write(int fd, const void *buf, int nbytes)`. Gebruik dus de correcte registers om deze parameters door te geven.  
@@ -337,11 +343,12 @@ Wanneer een user-space programma deze system call uitvoert, krijgt deze als resu
 
 Om dit mogelijk te maken moeten we in de process state in `struct proc` een teller bijhouden.
 
-* Voeg `uint64 numsyscalls` toe aan de [`struct proc`][struct proc] in `kernel/proc.h`. Doe dit in de private sectie. Waarom kunnen we dit in de private sectie plaatsen?
+* Voeg `uint64 numsyscalls` toe aan de [`struct proc`][struct proc] in `kernel/proc.h`. Doe dit in de private sectie. (In de sessie over synchronizatie zal duidelijk worden waarom.)
 
 Wanneer we een veld toevoegen aan de struct moeten we er uiteraard ook voor zorgen dat dit veld een initiële waarde toegewezen krijgt bij de aanmaak van een proces.
 
-* Initialiseer het veld `numsyscalls` in de functie [`allocproc`][allocproc] in [`kernel/proc.c`][proc]
+* Initialiseer het veld `numsyscalls` in de functie [`allocproc`][allocproc] in [`kernel/proc.c`][proc].
+  De `allocproc` functie wordt door `fork` gebruikt om een nieuwe `struct proc` aan te maken.
 
 
 Om ervoor te zorgen dat de teller het aantal system calls correct telt kunnen we deze waarde verhogen telkens wanneer de system call handler wordt opgeroepen.
@@ -368,7 +375,8 @@ Laten we allereerst onze C-wrapper declareren:
 
 De implementatie van de wrapper-functie gebeurt in assembly. In principe hebben jullie ondertussen genoeg kennis om deze wrapper zelf te implementeren.
 xv6 biedt echter een script aan waarmee dit volledig automatisch kan verlopen.
-Het [`user/usys.pl`][usys.pl] script genereert automatisch assembly-bestanden met daarin de implementatie van de wrappers.
+Het [`user/usys.pl`][usys.pl] script genereert automatisch een assembly-bestand (`user/usys.S`) met daarin de implementatie van de wrappers.
+Bekijk dit gegenereerde bestand en zorg dat je de wrappers begrijpt.
 
 - voeg `entry("getnumsyscalls")` toe aan [`user/usys.pl`][usys.pl]
 
@@ -378,7 +386,7 @@ De system call is klaar.
 Tijd om  deze uit te testen.
 We zullen ervoor zorgen dat onze C-runtime na afloop van ons programma print hoeveel system calls uitgevoerd werden.
 
-* Bewerk `crt0.c` zodat `getnumsyscalls` opgeroepen wordt na de return uit main
+* Bewerk `crt0.c` zodat `getnumsyscalls` opgeroepen wordt na de return uit `main` en print het resultaat uit.
 
 Indien dit correct werkt zullen de user-space programma's die returnen uit main het aantal uitgevoerde system calls printen. 
 
