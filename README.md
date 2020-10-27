@@ -1,4 +1,4 @@
-In deze oefenzitting leren jullie over de werking van system calls.
+In deze oefenzitting leren jullie over de werking van system calls aan de hand van de levenscyclus van een proces.
 
 - [Voorbereiding](#voorbereiding)
 - [GitHub classroom](#github-classroom)
@@ -7,18 +7,19 @@ In deze oefenzitting leren jullie over de werking van system calls.
   - [Aanmaak processen](#aanmaak-processen)
     - [De `fork` system call](#de-fork-system-call)
     - [Process state](#process-state)
+    - [Trapframe](#trapframe)
     - [Executable Files](#executable-files)
-    - [ELF in Linux](#elf-in-linux)
-    - [ELF in xv6](#elf-in-xv6)
-    - [Application Binary Interface (ABI)](#application-binary-interface-abi)
-    - [De `exec` system call](#de-exec-system-call)
     - [C runtime (crt0)](#c-runtime-crt0)
 - [System calls](#system-calls)
   - [System calls vs function calls](#system-calls-vs-function-calls)
-    - [RISC-V assembly](#risc-v-assembly)
-  - [SCRATCHPAD](#scratchpad)
+  - [RISC-V assembly](#risc-v-assembly)
+  - [xv6 system calls in RISC-V](#xv6-system-calls-in-risc-v)
+    - [Voorbereiding system call](#voorbereiding-system-call)
+    - [Implementatie system call](#implementatie-system-call)
+    - [System call exposen naar user-space](#system-call-exposen-naar-user-space)
+    - [System call oproepen](#system-call-oproepen)
 - [Permanente evaluatie](#permanente-evaluatie)
-- [Bonus oefening](#bonus-oefening)
+- [Bonusoefening](#bonusoefening)
 
 # Voorbereiding
 
@@ -36,7 +37,7 @@ Ter voorbereiding van deze oefenzitting wordt je verwacht:
 In deze sessie zullen we system calls in detail bestuderen.
 In het eerste deel kijken we naar de werking van enkele bestaande system calls gerelateerd aan de levenscyclus van een proces.
 Vervolgens leren we hoe we zelf een system call kunnen toevoegen aan xv6.
-Ten slotte vragen we jullie zelfstandig, als permanente evaluatie, een system call toe te voegen.
+Ten slotte vragen we jullie zelfstandig, als permanente evaluatie, een system call toe te voegen aan xv6.
 
 # Levenscyclus proces
 
@@ -61,150 +62,61 @@ In detail begrijpen hoe een proces gekopieerd wordt, is op dit punt in de oefenz
 * Bekijk [struct proc][struct proc] gedefinieerd in `proc.h` in xv6.
 * Lees de comments bij elk veld van de `struct`. 
   
-Het nut van de velden `state`, `parent`, `killed`, `pid`, `sz`, `ofile`, `cwd` en `name` zou duidelijk moeten zijn. Vraag verduidelijking aan een assistent indien dit niet het geval is. 
+Het nut van de velden `parent`, `pid`, `sz`, `ofile`, `cwd` en `name` zou duidelijk moeten zijn. Vraag verduidelijking aan een assistent indien dit niet het geval is. 
 
 > :bulb: Een file descriptor (int fd) indexeert de `ofile` array. Wanneer we dus met de `write` system call schrijven naar een bestand geven we als eerste argument aan `write` een index mee in de tabel met open bestanden van het proces.
 
-De velden `lock`, `chan` en `xstate` hebben te maken met synchronizatie en worden in een latere oefenzitting in detail bekeken.
+Om het veld `pagetable` te begrijpen hebben we kennis nodig van virtual memory, een concept dat we in de volgende oefenzitting zullen bekijken.
 
-Om velden `kstack`, `pagetable` en `trapframe` te begrijpen hebben we kennis nodig van virtual memory, een concept dat we in de volgende oefenzitting zullen bekijken.
+De velden `state` en `killed` bevatten informatie voor de scheduler en zullen dus in detail worden bekeken in een toekomstige oefenzitting over scheduling.
+
+De velden `lock`, `chan` en `xstate` hebben te maken met synchronizatie en worden in een latere oefenzitting over synchronizatie in detail bekeken.
+
+
+
+### Trapframe
+
+Begrip van het veld `trapframe` is belangrijk voor deze oefenzitting. Wanneer een proces de controle doorgeeft aan het besturingssystem, onder andere bij het uitvoeren van een *system call*, gebeurt dit via een *trap*.
+
+Een *trap* in user-mode zorgt ervoor dat de processor schakelt naar supervisor-mode en vervolgens de *trap handler* begint uit te voeren. Deze handler is een stuk machinecode op een vaste locatie in het geheugen.
+
+Het uitvoerende proces, dat de trap heeft veroorzaakt, wil na afloop van de trap verder kunnen uitvoeren. Het kan echter zijn dat machinecode in het besturingssysteem bepaalde registers nodig heeft die reeds in gebruik zijn door het uitvoerende proces. Om ervoor te zorgen dat deze registerwaarden niet verloren gaan, bewaart de trap handler deze in de *trap frame*. Bij terugkeer uit de trap kunnen de registerwaarden hersteld worden.
+
+* De `struct trapframe` staat gedefinieerd net boven de `struct proc` in de broncode van xv6. Bekijk de velden van deze struct.
+
+Het veld `kernel_satp` is gerelateerd aan het veld `pagetable` in `struct proc` en zal pas in detail bekeken worden in de oefenzitting over Virtual Memory.
+
+In xv6 heeft de kernel een eigen call stack, gesplitst van de call stack van het proces. Het veld `kstack` in `struct proc` bevat het adres van deze stack, het veld `kernel_sp` bevat een pointer naar de top van deze stack.
+
+Het veld `kernel_hartid` bewaart de identifier van de hardware thread waarop het proces actief is. Dit wordt later besproken in de sessie over synchronizatie.
+
+Op dit moment zou je een idee moeten hebben van de state die per proces bewaard wordt, en de state die bewaard en hersteld moet worden bij het uitvoeren van een trap.
+
+<!--
+**TODO** `context`
 
 Het veld `context` zal duidelijk worden door te scrollen naar het begin van het `proc.h` bestand.
 Je kan daar de definitie van `struct context` terugvinden.
-Wanneer een proces de controle doorgeeft aan het besturingssystem, onder andere bij het uitvoeren van een *system call*, noemen we dit een *context switch* van het proces naar de kernel.
 
 Het veld `context` bevat een struct waarin alle nodige registerwaarden van het proces bewaard kunnen worden bij het uitvoeren van een context switch. 
+-->
 
 ### Executable Files
 
 De `fork` system call zal als een van zijn taken de process state kopiëren voor het nieuwe proces. Nadat een proces gekopieerd is, is het in vele gevallen de bedoeling dat het nieuwe proces een eigen taak toegewezen krijgt.
-De meest gangbare manier om het proces een nieuwe taak toe te wijzen, maakt gebruik van de systeemoproep `exec`.
+De meest gangbare manier om het proces een nieuwe taak toe te wijzen, maakt gebruik van de system call `exec`.
 
-Om `exec` te begrijpen is het belangrijk om eerst te snappen wat we bedoelen wanneer we spreken over een *executable*.
-Een executable file of uitvoerbaar bestand bevat de volledige informatie, onder andere de machinecode en data, die nodig is om een bepaald programma uit te voeren.
+`exec` neemt als invoer een uitvoerbaar bestand (programma) en vervangt de code en data in het huidige proces door deze in het uitvoerbare bestand. Vervolgens wordt gesprongen naar het *entry point* van het programma. Op deze manier krijgt het geforkte proces een nieuwe taak toegewezen.
 
-Executables worden meestal gegenereerd door een *linker*. Met behulp van *compilers* worden broncode-bestanden omgezet in *object files*. De linker neemt als input verschillende object-files, verbindt (linkt) deze met elkaar en genereert vervolgens een executable als output.
-
-In UNIX volgen `executables` het [`ELF`](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format)-formaat.
-Onderstaande afbeelding (bron: [Wikipedia](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#/media/File:ELF_Executable_and_Linkable_Format_diagram_by_Ange_Albertini.png)) illustreert de opbouw van een ELF-bestand:
-
-![Opbouw ELF-bestand](https://upload.wikimedia.org/wikipedia/commons/e/e4/ELF_Executable_and_Linkable_Format_diagram_by_Ange_Albertini.png)
-
-In `ELF`-bestanden worden programma's opgedeeld in verschillende secties. Enkele veelvoorkende secties:
-
-* `.text` bevat de machinecode van het programma
-* `.data` bevat de initiële data die bij opstart van het proces geïnitialiseerd moet worden in het geheugen. Geïnitialiseerde global variables horen in de data-sectie
-* `.bss` bevat globale data die niet geïnitialiseerd moet worden. Gedeclareerde maar niet-geïnitialiseerde globals horen in de bss-sectie
-* `.rodata` bevat read-only data. Hierin worden vaak gedefinieerde strings geplaatst.
-* ...
-
-Elk van deze secties moeten in het geheugen geladen worden om een proces op te starten.
-Een *loader* neemt als invoer een ELF-bestand en laadt de verschillende secties in het geheugen.
-Een loader zet dus als het ware een programma, beschreven in een ELF-bestand, om in een proces dat kan uitvoeren binnen een besturingssysteem.
-
-Naast secties bevat een ELF-bestand ook een *symbol table*. De symbol table bevat informatie over de inhoud van een ELF-bestand, bijvoorbeeld welke functies gedefinieerd zijn in het ELF-bestand en op welke (relatieve) locatie je deze kan terugvinden.
-
-> :bulb: Een proces is niet hetzelfde als een programma. Beide woorden hebben een verschillende betekenis. Een programma beschouwen is de abstracte voorstelling van een taak die door een machine uitgevoerd kan worden. Een ELF-bestand of executable beschrijft een programma. Een proces bevat een instantie van een programma en kan geïnitialiseerd worden met behulp van een executable. Processen zijn de structuren die het mogelijk maken voor een besturingssysteem om programma's uit te voeren.
-
-### ELF in Linux
-
-Om ELF-bestanden te leren kennen zullen we deze eerst bekijken in onze eigen Linux-omgeving (dus niet in xv6):
-
-* Schrijf een C-programma `hello-world.c` binnen je Linux-omgeving
-
-```c
-#include <stdio.h>
-
-int main(){
-    printf("Hello, world!\n");
-    return 0;
-}
-```
-
-* Compileer en link het programma met `gcc`
-
-```shell
-gcc hello-world.c -o hello-world
-```
-* Bekijk alle secties in het gegenereerde ELF-bestand met behulp van `readelf`
-
-```shell
-readelf -S hello-world
-```
-
-* Bekijk alle symbolen in het generereerde ELF-bestand met behulp van `readelf`
-
-```shell
-readelf -s hello-world
-```
-
-* Bekijk de ELF-header met `readelf`. 
-```shell
-readelf -h hello-world | less
-```
-
-* Gebruik het programma `objdump` om de uitvoerbare ELF-secties met machinecode in hello-world te *disassemblen* (omzetten van machinetaal naar leesbare assembly). Met <kbd>↑</kbd> en <kbd>↓</kbd> kan je scrollen in de `less`-omgeving. Met <kbd>q</kbd> kan je de `less`-omgeving afsluiten.
-
-  
-```shell
-objdump -d hello-world | less
-```
-
-### ELF in xv6
-
-We bekijken nu de ELF-files van xv6. ELF-files van xv6 zijn niet rechtstreeks uit te voeren binnen je Linux-omgeving. De ELF-files zijn namelijk gegenereerd voor de RISC-V ISA en bevatten dus enkel RISC-V instructies. 
-
-De programma's `objdump` en `readelf` zijn in Linux gecompileerd voor de specifieke ISA van je processor. Deze programma's kunnen dus niet rechtstreeks gebruikt worden om de ELF-files van xv6 te bekijken.
-
-In de eerste oefenzitting hebben we een RISC-V compiler geïnstalleerd. In dezelfde package zaten gelukkig ook RISC-V varianten van `objdump` en `readelf`.
-
-* Analyseer de `_helloworld` ELF-file die we in vorige oefenzitting gemaakt hebben met behulp van `riscv64-linux-gnu-readelf`
-
-```shell
-riscv64-linux-gnu-readelf -a user/_helloworld | less
-```
-
-Merk op dat het aantal secties in de RISC-V ELF verschilt van het aantal secties in de x86-ELF. De compiler en linker beslissen welke secties worden toegevoegd aan een ELF-bestand.
-
-* Disassemble de RISC-V machinecode in `_helloworld` met `riscv64-linux-gnu-objdump` 
-
-```shell
-riscv64-linux-gnu-objdump -d user/_helloworld | less
-```
-
-
-### Application Binary Interface (ABI)
-
-> **TODO** Kort ABI's introduceren?
-
-### De `exec` system call
-
-Nadat een proces met behulp van `fork` gekopieerd is, willen we in vele gevallen dat dit proces een andere taak kan uitvoeren.
-Hiervoor gebruiken we de system call `exec`.
-
-`exec` neemt als invoer een ELF-bestand en initialiseert de ELF-secties in het werkgeheugen. Exec is dus de loader van UNIX-omgevingen.
-
-Exec is ook verantwoordelijk voor een correcte initialisatie van de registers. Nadat het geheugen en de registers correct geïnitialiseerd worden, wordt het programma gestart door te springen naar het *entry point*. Het entry point wordt gespecifieerd in de header-sectie van een ELF-bestand.
-
-
-* Zoek het entry point dat gebruikt wordt in xv6-programma's door gebruik te maken van `readelf`
-
-De linker is verantwoordelijk om het entry point van een programma correct te bewaren in een ELF-bestand. De GNU linker [ld](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_mono/ld.html#SEC24) die standaard door `gcc` gebruikt wordt, maakt gebruik van de volgende prioriteitenlijst om te bepalen wat er in het entry point bewaard wordt:
-
-    1. the `-e' entry command-line option;
-    2. the ENTRY(symbol) command in a linker control script;
-    3. the value of the symbol start, if present;
-    4. the address of the first byte of the .text section, if present;
-    5. The address 0. 
-
-In `xv6` wordt in de `Makefile` de `-e` flag opgegeven met als waarde `main`. De uitvoering van een xv6 executable zal dus starten bij het symbool `main`.
-
+Om samen te vatten wordt een proces in UNIX aangemaakt door
+een combinatie van de system call `fork`, dat de processtructuur kopieert, en `exec`, dat een nieuw programma
+in het programma laadt.
 
 ### C runtime (crt0)
 
 In vorige oefenzitting hebben we gemerkt dat wanneer we returnen uit main, we een exception krijgen. We kunnen nu begrijpen waarom dit gebeurt.
 
-Een proces wordt gestart door te springen naar het entry point van dat proces. `xv6` gebruikt als entry point `main`. Dat wil zeggen dat `main` niet als functie wordt opgeroepen en je dus ook geen `return` kan uitvoeren uit main.
+Een proces wordt gestart met behulp van `exec` door een programma in te laden en vervolgens te springen naar het entry point van dat proces. `xv6` gebruikt als entry point `main`. Dat wil zeggen dat `main` niet als functie wordt opgeroepen en je dus ook geen `return` kan uitvoeren uit main.
 
 In vele Linux-distributies wordt gebruik gemaakt van [crt0](https://en.wikipedia.org/wiki/Crt0) om C-programma's te starten. 
 Het entry point van een C executable wordt geplaatst in `crt0`, met name bij het daarin gedefinieerde `_start` symbool.
@@ -236,7 +148,7 @@ void _start(int argc, char* argv[])
 # System calls
 
 Ondertussen weten we hoe een proces opgestart kan worden, door middel van de system calls `fork` en `exec`. 
-We weten dat we de system call `write` kunnen gebruiken om te schrijven naar de console, een buffer (bvb een pipe) of een bestand.
+We weten ook dat we de system call `write` kunnen gebruiken om te schrijven naar de console, een buffer, een bestand, of naar een pipe geopend met de system call `pipe`.
 
 System calls geven processen de mogelijkheid diensten te vragen aan het besturingssysteem. 
 Bij het uitvoeren van een system call geeft een proces tijdelijk de controle over de processor door aan het OS.
@@ -248,23 +160,23 @@ In de vorige sessie hebben de userspace functie `puts(char* str)` geschreven die
 
 Een proces dat een string wil schrijven naar de `stdout` kan de *function call* `puts` gebruiken, als volgt:
 ```c
-char* str = "Hello, world!\n";
+const char* str = "Hello, world!";
 puts(str);
 ```
 
 Een proces dat een string wil schrijven naar de `stdout` kan ook de *system call* `write` gebruiken, als volgt:
 ```c
-char* str = "Hello, world!\n";
-write(1, str, sizeof(str));
+const char* str = "Hello, world!";
+write(1, str, strlen(str));
 ```
-
-In C kan je het verschil niet zien tussen een system call en een function call. 
-Indien we dit echter op assembly niveau bekijken is er wel een duidelijk verschil.
-Tijd dus om in assembly te duiken.
+In dit geval biedt C echter een wrapper-functie aan, zodat het mogelijk is om een system call op te roepen als een functie.
+De echte syscall gebeurt dus in de implementatie van de write wrapperfunctie.
+Deze wrappers moeten echter op assembly-niveau geïmplementeerd worden.
+Het is dus tijd om terug in assembly te duiken.
 
 > :exclamation: `puts` en andere functies zoals `printf` maken intern ook gebruik van de system call `write`. Het is niet mogelijk te schrijven zonder een system call. Dat verandert niets aan het feit dat oproepen naar `puts` en `printf` gewone function calls zijn.
 
-### RISC-V assembly
+## RISC-V assembly
 
 Neem onderstaand simpel C-programma:
 
@@ -288,18 +200,18 @@ Vertaald naar RISC-V assembly zou dit er als volgt kunnen uitzien:
 > | DRAMA | RISC V | Verklaring |
 > | --- | --- | --- |
 > | HIA.w reg, val | li reg, val | Laad waarde `val` in register `reg`
-> | HIA reg, addr  | ld reg, addr | Laad waarde op adres `addr` in register `reg`
+> | HIA reg1, (reg2)  | ld reg1, (reg2) | Laad waarde op het adres in `reg2` in register `reg1`
 > | HIA.a reg, symbol | la reg, symbol | Laad het adres van `symbol` in register `reg`
-> | BIG reg, addr  | sd reg, addr | Bewaar waarde in `reg` op in adres `addr`
-> | OPT.w reg, val | addi reg, val | Tel waarde `val` op bij het register `reg`
+> | BIG reg1, (reg2)  | sd reg1, (reg2) | Bewaar waarde in `reg1` op het adres in `reg2`
+> | OPT.w reg, val | addi reg, reg, val | Tel waarde `val` op bij het register `reg`
 > | OPT dst, src   | add dst, dst, src | dst = dst + src (`dst` en `src` zijn registers)
 > | SPR label | j label | Spring naar symbool `label`
 > | BST value | addi sp, sp, -8 | Bewaar `value` op de stack (stapel)
 > |           | sd value, 0(sp) |
 > | HST reg   | ld value, 0(sp) | Haal waarde van de stack en bewaar in `reg`
 > |           | addi sp, sp, 8  |
-> | SBR symbol| jal symbol      | Schrijf de waarde van de programmateller naar het return adres register (TKA in DRAMA, ra in Risc V) en spring naar `symbol`
-> | KTG       | ret             | Spring naar het adres in het return address register
+> | SBR symbol| jal ra, symbol      | Schrijf de waarde van de programmateller naar het return adres register (TKA in DRAMA, ra in Risc V) en spring naar `symbol`
+> | KTG       | jr ra             | Spring naar het adres in het return address register
 
 ```asm
 .data                   #Start de data-sectie
@@ -318,7 +230,7 @@ doubleIt:               #Definieer het symbool doubleIt
                         #   a0: input argument 1
                         #   a0: return value
     add a0, a0, a0      #Verdubbel i, geef terug via a0
-    ret                 #Spring naar het adres in register ra
+    jr ra               #Spring naar het adres in register ra
                         #ra is het return-address register
 
 main:                   #Definieer het symbool main
@@ -338,7 +250,7 @@ main:                   #Definieer het symbool main
     ld a0, (t0)         #Laad de waarde op het adres in t0
                         #in a0
 
-    jal doubleIt        #Spring naar symbool doubleIt en
+    jal ra, doubleIt    #Spring naar symbool doubleIt en
                         #sla in het return-address register
                         #ra het adres op waarnaar ret moet
                         #springen.
@@ -346,7 +258,7 @@ main:                   #Definieer het symbool main
     ld ra, (sp)         #Haal het oude return-adres terug
                         #van de stack en bewaar het in ra
 
-    ret                 #Spring naar het adres in register
+    jr ra               #Spring naar het adres in register
                         #ra (een adres in crt0?)
 ```
 
@@ -358,80 +270,143 @@ In RISC-V worden functie-parameters in de eerste plaats doorgegeven via de regis
 .text
 .globl main
 main:
-    #TODO functie-oproep voorbereiden
-    jal puts
-    #TODO return adres herstellen
+    #TODO functie-oproep voorbereiden (hint: ra!)
+    jal ra, puts
+    #TODO return adres ra herstellen
     ret
 
 .section .rodata
 hello_str: .string "Hello, world!"
 ```
-* voeg `$U/_hello_asm_puts\` aan [`UPROGS`][UPROGS]
-* implementeer `main` (denk aan bewaren `ra`!)
-* **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/f5671422e83c36303acd41abd29faa49eb2eb5c3)
+* Voeg `$U/_hello_asm_puts\` aan [`UPROGS`][UPROGS] in de Makefile
+* Implementeer `main`. Denk hierbij aan het bewaren van het return address in `ra` voor je een functie oproept.
 
-## SCRATCHPAD
 
-- xv6 system call convention
-    - oefening: hello world in assembly via `write`
-        - ongeveer zelfde begin als vorige oefening maar gebruik user/hello_asm_write.S
-            ```asm
-            #include "kernel/syscall.h"
+## xv6 system calls in RISC-V
 
-            .text
-            .global main
-            main:
+Nu functie-oproepen in assembly weer vers in het geheugen zit, is het tijd om te kijken naar de werking van een system call.
 
-            .section .rodata
-            hello_str:
-                .ascii "Hello, world!\n"
-            ```
-        - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/b3b23725a8ecd62b54e67dfaf1acab4fbc5ead5f)
-- xv6 system call dispatch code
-    - [`syscall`][syscall]
-      Vanaf hier zou de syscall code begrijpbaar moeten zijn.
-      We houden de eerdere code (traphandler enzo) voor de scheduling oefenzitting.
-      We moeten enkel uitleggen wat trapframe precies is.
-    - [`getpid`][sys_getpid] als voorbeeld (eenvoudigste syscall)
-- system call toevoegen: `getnumsyscalls`
-    - voeg `uint64 numsyscalls` toe aan [`struct proc`][struct proc] (private section -> explain)
-    - initialiseer `numsyscalls` in [`allocproc`][allocproc]
-    - verhoog `numsyscalls` in [`syscall`][syscall]
-    - voeg `SYS_getnumsyscalls` toe aan [kernel/syscall.h][syscall.h]
-    - implementeer `sys_getnumsyscalls` in [kernel/sysproc.c][sysproc.c]
-    - dispatch `sys_getnumsyscalls` in [`syscall`][syscall]
-- system call gebruiken in user space
-    - voeg `int getnumsyscalls()` toe aan [user/user.h][user.h]
-    - voeg `entry("getnumsyscalls")` toe aan [user/usys.pl][usys.pl] (leg uit dat dit script gewoon een assembly bestand genereerd)
-    - gebruik die nieuwe system call in een user space programma
-- **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/fc2ac55f12d039b83a6068f9e3b9f08fd442b44c)
-- call `getnumsyscalls` in `_start` na main
-    - verklaar waarom `hello_asm_write` 4 syscalls doet voor exit (`sbrk` door `malloc` in `sh` (waarschijnlijk niet altijd), `exec` in `sh`, `write` in `hello`, `getnumsyscalls` zelf in `hello`)
+Alle system calls in RISC-V worden uitgevoerd met behulp van de `ecall` instructie. Deze instructie, wanneer uitgevoerd vanuit user mode, zal ervoor zorgen dat de processor overgaat naar *supervisor mode* en vervolgens (via de trampoline, hierover meer in de sessie over Virtual Memory) springt naar de eerder besproken trap handler. Herinner je dat in die trap handler de registers van het user-space programma bewaard worden.
 
+De trap handler zal vervolgens de oorzaak van de trap bepalen. Indien de trap veroorzaakt was door een ecall weten we dat de gebruiker een system call probeerde op te roepen.
+Er wordt dus gesprongen naar de system call handler, met name de functie `syscall(void)`.
+
+* Bekijk de functie [`syscall`][syscall] in de code van xv6. Welk register wordt hier gebruikt om te bepalen welke system call opgeroepen moet worden?
+* Voeg nu een bestand `user/hello_asm_write.S` toe. Maak gebruik van de `ecall` instructie om de system call `write` uit te voeren. Je zal het register uit bovenstaande vraag moeten gebruiken om de correcte system call op te vragen. Je kan starten vanuit onderstaande code:
+
+```asm
+#include "kernel/syscall.h"
+
+.text
+.global main
+main:
+    #TODO implement
+
+    #HINT: you can use the symbols defined in the header
+    #file kernel/syscall.h
+    #e.g. li t0, SYS_fork loads the value 1 into t0
+
+.section .rodata
+hello_str:
+    .string "Hello, world!"
+```
+
+> :bulb: Naast de selectie van de system call zal het ook nodig zijn om parameters door te geven aan `write`. Dit gebeurt volgens dezelfde conventies als bij een gewone functie-oproep met `jal`. De signature van `write` is `int write(int fd, const void *buf, int nbytes)`. Gebruik dus de correcte registers om deze parameters door te geven.  
+
+We weten nu hoe we een system call opgeroepen wordt vanuit user-space, hoe de trap handler en system call handler ervoor zorgen dat de juiste system call wordt uitgevoerd en we begrijpen hoe een C-wrapper functie dit voor een programmeur erg eenvoudig kan maken.
+Tijd om eens te kijken naar de implementatie van zo'n system call.
+
+* Bekijk de implementatie van de eenvoudige system call [`getpid`][sys_getpid]. Zo eenvoudig kan het zijn.  
+* Kijk eens naar de andere system calls die in hetzelfde bestand zijn geïmplementeerd. Het is nog niet nodig om deze allemaal in detail te begrijpen.
+  
+In de vorige sessie hebben we geleerd hoe je een user-space programma kan toevoegen aan xv6. 
+Ondertussen zijn we klaar om onze eerste aanpassing te maken aan de kernel zelf. 
+We zullen onze eigen system call toevoegen.
+Na deze sessie kan je jezelf dus officieel een OS programmeur noemen.
+
+De system call die we gaan toevoegen is `getnumsyscalls`.
+Wanneer een user-space programma deze system call uitvoert, krijgt deze als resultaat het totaal aantal uitgevoerde system calls in het huidige proces. 
+
+### Voorbereiding system call
+
+Om dit mogelijk te maken moeten we in de process state in `struct proc` een teller bijhouden.
+
+* Voeg `uint64 numsyscalls` toe aan de [`struct proc`][struct proc] in `kernel/proc.h`. Doe dit in de private sectie. Waarom kunnen we dit in de private sectie plaatsen?
+
+Wanneer we een veld toevoegen aan de struct moeten we er uiteraard ook voor zorgen dat dit veld een initiële waarde toegewezen krijgt bij de aanmaak van een proces.
+
+* Initialiseer het veld `numsyscalls` in de functie [`allocproc`][allocproc] in [`kernel/proc.c`][proc]
+
+
+Om ervoor te zorgen dat de teller het aantal system calls correct telt kunnen we deze waarde verhogen telkens wanneer de system call handler wordt opgeroepen.
+
+* Verhoog `numsyscalls` in [`syscall`][syscall] in [`kernel/syscall.c`][syscall]
+
+### Implementatie system call
+
+Nu onze teller correct werkt, resteert ons enkel de effectieve implementatie van de system call.
+
+* Voeg `SYS_getnumsyscalls` toe aan [`kernel/syscall.h`][syscall.h].
+* Implementeer `sys_getnumsyscalls` in [`kernel/sysproc.c`][sysproc.c].
+* Zorg ervoor dat de system call handler [`syscall`][syscall] onze nieuwe system call correct doorstuurt.
+
+> :bulb: Om `sys_getnumsyscalls` te kunnen oproepen vanuit `syscall` zal je de C-compiler moeten vertellen dat deze functie bestaat, en deze dus moeten declareren. Volg het voorbeeld van de declaraties van de andere system calls in het bestand.
+
+### System call exposen naar user-space
+
+Onze system call werkt nu. We kunnen hem alleen nog niet eenvoudig oproepen vanuit user-space. 
+Herinner je dat system calls opgeroepen worden via een C-wrapper.
+Laten we allereerst onze C-wrapper declareren:
+
+* Voeg `int getnumsyscalls()` toe aan [`user/user.h`][user.h]
+
+De implementatie van de wrapper-functie gebeurt in assembly. In principe hebben jullie ondertussen genoeg kennis om deze wrapper zelf te implementeren.
+xv6 biedt echter een script aan waarmee dit volledig automatisch kan verlopen.
+Het [`user/usys.pl`][usys.pl] script genereert automatisch assembly-bestanden met daarin de implementatie van de wrappers.
+
+- voeg `entry("getnumsyscalls")` toe aan [`user/usys.pl`][usys.pl]
+
+### System call oproepen
+
+De system call is klaar.
+Tijd om  deze uit te testen.
+We zullen ervoor zorgen dat onze C-runtime na afloop van ons programma print hoeveel system calls uitgevoerd werden.
+
+* Bewerk `crt0.c` zodat `getnumsyscalls` opgeroepen wordt na de return uit main
+
+Indien dit correct werkt zullen de user-space programma's die returnen uit main het aantal uitgevoerde system calls printen. 
+
+* Voer nu het programma `hello_asm_write` uit. Welk resultaat krijg je? Is dit het resultaat dat je verwacht had? Kan je achterhalen welke system calls werden uitgevoerd in het proces die je niet zelf expliciet hebt opgeroepen?
+    
 # Permanente evaluatie
 
-- Voeg een nieuwe system call `void traceme(int enable)` toe die ervoor zorgt dat (als `enable` truthy is) elke system call van het proces geprint wordt naar de console (gebruik de kernel [`printf`][kernel printf]) samen met de pid van het proces. (`[{pid}]: syscall {num}`)
-  Gebruik [`argint`][argint] om een sycall argument op te vragen.
-    - **NOTE** in een eerdere versie van de opgave was er een `fd` argument. Het blijkt echter moeilijk om in de kernel geformatteerde strings naar een file te schrijven (geen `sprintf` en `filewrite` verwacht een user space adres)
-    - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/a6ec06062f1fd1925687347143ec431359c1a7f8)
-- Maak een user space programma `trace` dat een executable als argument krijgt en deze executable oproept met de `traceme` functionaliteit aangezet. (`traceme`, `exec`)
-    - **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/2fa37b2beb1b60d0aeb7cd584828076146041b4f)
+Als permanente evaluatie van deze oefenzitting is het de bedoeling om zelfstandig een system call toe te voegen.
 
-# Bonus oefening
+* Voeg een nieuwe system call `void traceme(int enable)` toe die ervoor zorgt dat (als `enable` truthy is) elke system call van het proces geprint wordt naar de console, samen met de `pid` van het proces.
+  * Gebruik de kernel-versie van [`printf`][kernel printf]
+  * Volg het printformaat `[{pid}]: syscall {num}`
+  * Gebruik [`argint`][argint] om een syscall argument op te vragen.
+* Maak een user-space programma `trace` dat een executable als argument krijgt en deze executable oproept met de `traceme` functionaliteit aangezet.
+  * Hint: gebruik de system calls `traceme` en `exec`
+
+Zoals aangekondigd op Toledo is de deadline van deze permanente evaluatie een week nadat je deze oefenzitting volgt, op donderdag om 10h30.
+
+# Bonusoefening
 
 - Pass `traceme` aan om nu een `fd` als input te krijgen
 - Wanneer `traceme` opgeroepen wordt, valideer je eerst de `fd` (geldige open file, is een pipe, is writable)
-  Zo ja, sla op in `struct proc::tracefd`. Zo nee, zet dit veld op -1
-- Wanneer er een syscall gebeurt en `tracefd` is niet gelijk aan -1, schrijf een `struct tracemsg` naar `tracefd` via [`pipewrite`][pipewrite] (zet `user_src` op 0 om aan te geven dat de input in kernel space zit)
+  * Zo ja, sla op in `struct proc::tracefd`.
+  * Zo nee, zet dit veld op -1
+- Wanneer er een syscall gebeurt en `tracefd` niet gelijk is aan -1, schrijf een `struct tracemsg` naar `tracefd` via [`pipewrite`][pipewrite] (zet `user_src` op 0 om aan te geven dat de input in kernel space zit)
 - Schrijf een user space programma `trace` dat gebruik maakt van deze nieuwe syscall
-- **TODO** meer details en boiler plate code
-- **REMOVE** [solution](https://github.com/besturingssystemen/xv6-solutions/commit/065b7023dafccfc81cdc6f927aaae1fb8be2513d)
 
+> :information_source: Deze oefening is niet verplicht. Werk eerst je permanente evaluatie af voor je hier aan zou beginnen.
 
 [struct proc]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/proc.h#L86
 [syscall]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/syscall.c#L133
 [syscall.h]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/syscall.h
 [allocproc]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/proc.c#L100
+[proc]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/proc.c
 [sys_getpid]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/sysproc.c#L21
 [sysproc.c]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/kernel/sysproc.c
 [user.h]: https://github.com/besturingssystemen/xv6-riscv/blob/280d2aa694114e7a6e7eb2a9c4f62e3c314983c6/user/user.h
