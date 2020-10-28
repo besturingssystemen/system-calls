@@ -138,7 +138,7 @@ Een proces wordt gestart met behulp van `exec` door een programma in te laden en
 In vele Linux-distributies wordt gebruik gemaakt van [crt0](https://en.wikipedia.org/wiki/Crt0) om C-programma's te starten. 
 Het entry point van een C executable wordt geplaatst in `crt0`, vaak in een functie genaamd `_start`.
 
-`_start` in `crt0` is dan het absolute beginpunt bij het uitvoering van een uit C gecompileerde executable. `_start` initialiseert de C-runtime en roept vervolgens `main` op. Na uitvoering van `main` wordt de return-value van `main` doorgegeven aan de `exit` system call. Zo wordt het proces afgesloten.
+`_start` in `crt0` is dan het absolute beginpunt bij het uitvoering van een uit C gecompileerde executable. `_start` initialiseert typisch de C-runtime (dit is niet nodig voor de eenvoudige runtime van xv6) en roept vervolgens `main` op. Na uitvoering van `main` wordt de return-value van `main` doorgegeven aan de `exit` system call. Zo wordt het proces afgesloten.
 
 Om het mogelijk te maken om te returnen uit `main` zonder exceptions, voegen we nu onze eigen `crt0` toe aan xv6.
 
@@ -160,7 +160,7 @@ void _start(int argc, char* argv[])
 
 
 * Pas het entry point (`-e` flag) aan dat aan [`ld` wordt gegeven][ld rule] in de `Makefile` van xv6
-* Test nu je implementatie van `crt0` door `_helloworld` te bewerken. Vervang je oproep naar `exit` door een `return` uit `main`. Indien `crt0` correct is geïmplementeerd, krijg je geen user exception na uitvoering van het programma.
+* Test nu je implementatie van `crt0` door `user/helloworld.c` te bewerken. Vervang je oproep naar `exit` door een `return` uit `main`. Indien `crt0` correct is geïmplementeerd, krijg je geen user exception na uitvoering van het programma.
 
 # System calls
 
@@ -214,23 +214,32 @@ Vertaald naar RISC-V assembly zou dit er als volgt kunnen uitzien:
 * Lees de onderstaande assembly-code en zorg ervoor dat je elke regel begrijpt.
   
 > :information_source:  Denk terug aan functie-oproepen in DRAMA in het vak SOCS. Conceptueel gezien zijn deze identiek hetzelfde. SOCS gebruikt echter nederlandstalige termen voor vele concepten, dit kan tot verwarring leiden. Hier een snelle cheat sheet:
-> | DRAMA | RISC V | Verklaring |
-> | --- | --- | --- |
-> | HIA.w reg, val | li reg, val | Laad waarde `val` in register `reg`
-> | HIA reg1, (reg2)  | ld reg1, (reg2) | Laad waarde op het adres in `reg2` in register `reg1`
-> | HIA.a reg, symbol | la reg, symbol | Laad het adres van `symbol` in register `reg`
-> | BIG reg1, (reg2)  | sd reg1, (reg2) | Bewaar waarde in `reg1` op het adres in `reg2`
-> | OPT.w reg, val | addi reg, reg, val | Tel waarde `val` op bij het register `reg`
-> | OPT dst, src   | add dst, dst, src | dst = dst + src (`dst` en `src` zijn registers)
-> | SPR label | j label | Spring naar symbool `label`
-> | BST value | addi sp, sp, -8 | Bewaar `value` op de stack (stapel)
-> |           | sd value, 0(sp) |
-> | HST reg   | ld value, 0(sp) | Haal waarde van de stack en bewaar in `reg`
-> |           | addi sp, sp, 8  |
-> | SBR symbol| jal ra, symbol      | Schrijf de waarde van de programmateller naar het return adres register (TKA in DRAMA, ra in Risc V) en spring naar `symbol`
-> | KTG       | jr ra             | Spring naar het adres in het return address register
+> | DRAMA | RISC V | Naam | Verklaring |
+> | --- | --- | --- | --- |
+> | HIA.w reg, val | li reg, val | Load Immediate (immediate=constante) | Laad waarde `val` in register `reg`
+> | HIA reg1, (reg2)  | ld reg1, (reg2) | Load Double Word (double word=64-bit) | Laad waarde op het adres in `reg2` in register `reg1`
+> | HIA.a reg, symbol | la reg, symbol | Load Address | Laad het adres van `symbol` in register `reg`
+> | BIG reg1, (reg2)  | sd reg1, (reg2) | Store Double Word | Bewaar waarde in `reg1` op het adres in `reg2`
+> | OPT.w reg, val | addi reg, reg, val | Add Immediate | Tel waarde `val` op bij het register `reg`
+> | OPT dst, src   | add dst, dst, src | Add | dst = dst + src (`dst` en `src` zijn registers)
+> | SPR label | j label | Jump | Spring naar symbool `label`
+> | BST value | addi sp, sp, -8 | | Bewaar `value` op de stack (stapel)
+> |           | sd value, 0(sp) | |
+> | HST reg   | ld value, 0(sp) | | Haal waarde van de stack en bewaar in `reg`
+> |           | addi sp, sp, 8  | |
+> | SBR symbol| jal ra, symbol | Jump And Link (link=sla return adres op) | Schrijf de waarde van de programmateller naar het return adres register (TKA in DRAMA, ra in Risc V) en spring naar `symbol`
+> | KTG       | jr ra          | Jump Register | Spring naar het adres in het return address register
+> | N/A       | ecall          | Environment Call | Veroorzaak een trap die naar de trap handler van de kernel springt
+>
+> Merk op dat de meeste instructies in RISC-V drie operanden hebben.
+> De eerste is het register waar het resultaat in opgeslagen wordt, de twee laatsten zijn de inputs.
+> In DRAMA hebben de meeste instructies maar twee operanden en is de eerste zowel de output als één van de inputs.
+>
+> Verder volgt RISC-V, zoals de naam laat uitschijnen, de [RISC][risc] filosofie.
+> Dit wilt onder andere zeggen dat de meeste instructies maar één effect hebben.
+> En DRAMA-instructie zoals `BST`, die een waarde op de stack opslaat _en_ de stack pointer aanpast, zal in RISC-V dus twee instructies nodig hebben.
 
-```asm
+```s
 .data                   #Start de data-sectie
     value: .word 0x5    #Init global value met waarde 5
 
@@ -272,8 +281,8 @@ main:                   #Definieer het symbool main
 
     jal ra, sum         #Spring naar symbool sum en
                         #sla in het return-address register
-                        #ra het adres op waarnaar ret moet
-                        #springen.
+                        #ra het adres op waarnaar sum moet
+                        #terugkeren
 
     ld ra, (sp)         #Haal het oude return-adres terug
                         #van de stack en bewaar het in ra
@@ -289,14 +298,14 @@ In RISC-V worden functie-parameters in de eerste plaats doorgegeven via de regis
 
 * Voeg nu een bestand `user/hello_asm_puts.S` toe. Je kan vertrekken van de volgende assembly-code:
 
- ```asm
+ ```s
 .text
 .globl main
 main:
     #TODO functie-oproep voorbereiden (hint: ra!)
-    jal ra, puts
+    jal ra, puts # dit springt naar de C-functie puts in user/puts.c
     #TODO return adres ra herstellen
-    ret
+    jr ra
 
 .section .rodata
 hello_str: .string "Hello, world!"
@@ -317,7 +326,7 @@ Er wordt dus gesprongen naar de system call handler, met name de functie `syscal
 * Bekijk de functie [`syscall`][syscall] in de code van xv6. Welk register wordt hier gebruikt om te bepalen welke system call opgeroepen moet worden?
 * Voeg nu een bestand `user/hello_asm_write.S` toe (let op de hoofdletter `S` in de extensie). Maak gebruik van de `ecall` instructie om de system call `write` uit te voeren. Je zal het register uit bovenstaande vraag moeten gebruiken om de correcte system call op te vragen. Je kan starten vanuit onderstaande code:
 
-```asm
+```s
 #include "kernel/syscall.h"
 
 .text
@@ -372,6 +381,8 @@ Nu onze teller correct werkt, resteert ons enkel de effectieve implementatie van
 
 * Voeg `SYS_getnumsyscalls` toe aan [`kernel/syscall.h`][syscall.h].
 * Implementeer `sys_getnumsyscalls` in [`kernel/sysproc.c`][sysproc.c].
+  Je kan een pointer naar het huidige proces krijgen via de [`myproc`][myproc] functie.
+  (In een latere oefenzitting zal duidelijk worden hoe deze functie precies werkt.)
 * Zorg ervoor dat de system call handler [`syscall`][syscall] onze nieuwe system call correct doorstuurt.
 
 > :bulb: Om `sys_getnumsyscalls` te kunnen oproepen vanuit `syscall` zal je de C-compiler moeten vertellen dat deze functie bestaat, en deze dus moeten declareren. Volg het voorbeeld van de declaraties van de andere system calls in het bestand.
@@ -444,3 +455,5 @@ Zoals aangekondigd op Toledo is de deadline van deze permanente evaluatie een we
 [fork]: https://github.com/besturingssystemen/xv6-riscv/blob/2b5934300a404514ee8bb2f91731cd7ec17ea61c/kernel/proc.c#L266
 [pipewrite]: https://github.com/besturingssystemen/xv6-riscv/blob/2b5934300a404514ee8bb2f91731cd7ec17ea61c/kernel/pipe.c#L77
 [trapframe]: https://github.com/besturingssystemen/xv6-riscv/blob/2b5934300a404514ee8bb2f91731cd7ec17ea61c/kernel/proc.h#L52
+[risc]: https://en.wikipedia.org/wiki/Reduced_instruction_set_computer
+[myproc]: https://github.com/besturingssystemen/xv6-riscv/blob/2b5934300a404514ee8bb2f91731cd7ec17ea61c/kernel/proc.c#L75
