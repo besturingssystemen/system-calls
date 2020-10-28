@@ -142,7 +142,7 @@ Het entry point van een C executable wordt geplaatst in `crt0`, vaak in een func
 
 Om het mogelijk te maken om te returnen uit `main` zonder exceptions, voegen we nu onze eigen `crt0` toe aan xv6.
 
-* Maak een bestand `user/ctr0.c` aan
+* Maak een bestand `user/crt0.c` aan
 * Voeg `$U/crt0.o` toe aan `ULIB` in de Makefile van `xv6`. We zorgen er hiermee dus voor dat `crt0` gelinked wordt aan elk user-space programma.
 * Implementeer `void _start(int argc, char* argv[])` in `user/crt0.c`
 
