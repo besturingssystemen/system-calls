@@ -39,7 +39,7 @@ De submissie van de permanente evaluatie zal gebeuren via GitHub classroom.
 
 * Klik op [deze link](https://classroom.github.com/a/DWV0ppLK) om een persoonlijke repository aan te maken.
 
-Wanneer je een e-mail krijg van GitHub dat je repository klaar is, moet je deze clonen naar je eigen machine. Dit kan enkele minuten duren.
+Wanneer je een e-mail krijgt van GitHub dat je repository klaar is, moet je deze clonen naar je eigen machine. Dit kan enkele minuten duren.
 
 Indien `make qemu` ervoor zorgt dat xv6 opstart, is je repository correct gecloned.
 
@@ -106,6 +106,8 @@ Merk op dat xv6 dus een kernel stack heeft _per proces_.
 Waarom dit nodig is, zal duidelijk worden in latere oefenzittingen.
 
 Het veld `kernel_hartid` bewaart de identifier van de hardware thread (CPU core) waarop het proces actief is. Dit wordt later besproken in de sessie over synchronizatie.
+
+Het veld `ra`, en alle daarop volgende velden, bevatten de waarden van de registers op het moment dat de trap gebeurde.
 
 Op dit moment zou je een idee moeten hebben van de state die per proces bewaard wordt, en de state die bewaard en hersteld moet worden bij het uitvoeren van een trap.
 
